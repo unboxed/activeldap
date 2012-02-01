@@ -18,7 +18,6 @@ module ActiveLdap
         new_value = (old_value + current_value).uniq.sort
         if old_value != new_value
           @owner[@options[:wrap]] = new_value
-          @owner.save unless @owner.new_entry?
         end
       end
 
@@ -34,7 +33,6 @@ module ActiveLdap
         new_value = new_value.uniq.sort
         if old_value != new_value
           @owner[@options[:wrap]] = new_value
-          @owner.save unless @owner.new_entry?
         end
       end
 

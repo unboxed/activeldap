@@ -192,6 +192,7 @@ EOX
             entries = [user, group1, group2, group3]
 
             user.references << group1
+            user.save!
             user, group1, group2, group3 = reload_entries(*entries)
             assert_references([[group1]], [user])
             assert_related_users([user], group1)
@@ -199,6 +200,7 @@ EOX
             assert_related_users([], group3)
 
             user.references = [group2, group3]
+            user.save!
             user, group1, group2, group3 = reload_entries(*entries)
             assert_references([[group2, group3]], [user])
             assert_related_users([], group1)
@@ -206,6 +208,7 @@ EOX
             assert_related_users([user], group3)
 
             user.references.delete(group2)
+            user.save!
             user, group1, group2, group3 = reload_entries(*entries)
             assert_references([[group3]], [user])
             assert_related_users([], group1)
@@ -395,17 +398,31 @@ EOX
 
           assert_equal(gid_number1, user1.gid_number.to_i)
           assert_equal(gid_number2, user2.gid_number.to_i)
+
           group.members = [user1, user2]
           assert_equal([user1.uid, user2.uid].sort,
                        group.members.collect {|x| x.uid}.sort)
           assert_equal([user1.uid, user2.uid].sort, group.member_uid.sort)
           assert_equal(gid_number2, user2.gid_number.to_i)
 
+          g = @group_class.find(group.cn)
+          assert g.members.empty?
+          assert_equal([].sort,
+                       g.members.collect {|x| x.uid}.sort)
+          assert_equal(nil, g.member_uid)
+
+          group.save!
+
           group.members = [user1]
           assert_equal([user1.uid].sort,
                        group.members.collect {|x| x.uid}.sort)
           assert_equal(user1.uid, group.member_uid)
           assert_equal(gid_number1, user1.gid_number.to_i)
+
+          g = @group_class.find(group.cn)
+          assert_equal([user1.uid, user2.uid].sort,
+                       g.members.collect {|x| x.uid}.sort)
+          assert_equal([user1.uid, user2.uid].sort, g.member_uid.sort)
         end
       end
     end

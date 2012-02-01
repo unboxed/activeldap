@@ -43,6 +43,7 @@ class TestGroupls < Test::Unit::TestCase
         make_temporary_group do |group|
           group.members << user1
           group.members << user2
+          group.save!
           assert_groupls_successfully(group.id, [user1, user2])
         end
       end
@@ -60,6 +61,7 @@ class TestGroupls < Test::Unit::TestCase
             make_temporary_user(options2) do |user2,|
               group.members << user1
               group.members << user2
+              group.save!
               assert_groupls_successfully(group.id,
                                           [primary_user1, primary_user2,
                                            user1, user2])
