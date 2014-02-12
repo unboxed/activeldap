@@ -3,42 +3,45 @@ module ActiveLdap
     def self.runtime=(value)
       Thread.current["active_ldap_runtime"] = value
     end
-    
+
     def self.runtime
       Thread.current["active_ldap_runtime"] ||= 0
     end
-    
+
     def self.reset_runtime
       rt, self.runtime = runtime, 0
       rt
     end
-    
+
     def initialize
       super
-      @odd_or_even = false
+      @odd = false
     end
-    
+
     def log_info(event)
       self.class.runtime += event.duration
       return unless logger.debug?
-  
+
       payload = event.payload
-      name = 'LDAP: %s (%.1fms)' % [payload[:name], event.duration]
+      label = payload[:name]
+      label += ": FAILED" if payload[:info][:exception]
+      name = 'LDAP: %s (%.1fms)' % [label, event.duration]
       info = payload[:info].inspect
-  
+
       if odd?
-        name_color, dump_color = "4;36;1", "0;1"
+        name = color(name, CYAN, true)
+        info = color(info, nil, true)
       else
-        name_color, dump_color = "4;35;1", "0"
+        name = color(name, MAGENTA, true)
       end
-  
-      debug "  \e[#{name_color}m#{name}\e[0m: \e[#{dump_color}m#{info}\e[0m"
+
+      debug "  #{name} #{info}"
     end
-    
+
     def odd?
-      @odd_or_even = !@odd_or_even
+      @odd = !@odd
     end
-    
+
     def logger
       ActiveLdap::Base.logger
     end

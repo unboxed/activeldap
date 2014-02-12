@@ -23,9 +23,13 @@ module ActiveLdap
           uri = construct_uri(host, port, method == :ssl)
           with_start_tls = method == :start_tls
           info = {:uri => uri, :with_start_tls => with_start_tls}
-          [log("connect", info) {JndiConnection.new(host, port, method)},
+          [log("connect", info) {JndiConnection.new(host, port, method, @timeout)},
            uri, with_start_tls]
         end
+      end
+
+      def connecting?
+        super and @connection.bound?
       end
 
       def unbind(options={})
@@ -89,13 +93,22 @@ module ActiveLdap
       def execute(method, info=nil, *args, &block)
         name = (info || {}).delete(:name) || method
         log(name, info) {@connection.send(method, *args, &block)}
+      rescue JndiConnection::CommunicationException, JndiConnection::ServiceUnavailableException => e
+        disconnect! if connecting?
+
+        raise ActiveLdap::ConnectionError.new(e.getMessage())
       rescue JndiConnection::NamingException
         if /\[LDAP: error code (\d+) - ([^\]]+)\]/ =~ $!.to_s
           message = $2
           klass = LdapError::ERRORS[Integer($1)]
           klass ||= ActiveLdap::LdapError
           raise klass, message
+        elsif /LDAP response read timed out/ =~ $!.to_s
+          disconnect! if connecting?
+
+          raise Timeout::Error.new($!.to_s)
         end
+
         raise
       end
 

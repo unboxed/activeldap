@@ -88,6 +88,7 @@ module ActiveLdap
     end
 
     def attribute(name)
+      name = name.to_s if name.is_a?(Symbol)
       cache([:attribute, name]) do
         Attribute.new(name, self)
       end
@@ -324,7 +325,12 @@ module ActiveLdap
         super(id, schema, "ldapSyntaxes")
         @id = id
         @name = nil if @name == @id
-        @validator = Syntaxes[@id]
+        @built_in_syntax = Syntaxes[@id]
+      end
+
+      def binary?
+        return true if @built_in_syntax and @built_in_syntax.binary?
+        binary_transfer_required? or !human_readable?
       end
 
       def binary_transfer_required?
@@ -340,24 +346,24 @@ module ActiveLdap
       end
 
       def validate(value)
-        if @validator
-          @validator.validate(value)
+        if @built_in_syntax
+          @built_in_syntax.validate(value)
         else
           nil
         end
       end
 
       def type_cast(value)
-        if @validator
-          @validator.type_cast(value)
+        if @built_in_syntax
+          @built_in_syntax.type_cast(value)
         else
           value
         end
       end
 
       def normalize_value(value)
-        if @validator
-          @validator.normalize_value(value)
+        if @built_in_syntax
+          @built_in_syntax.normalize_value(value)
         else
           value
         end
@@ -412,10 +418,30 @@ module ActiveLdap
 
       # binary?
       #
-      # Returns true if the given attribute's syntax
-      # is X-NOT-HUMAN-READABLE or X-BINARY-TRANSFER-REQUIRED
+      # Returns true if the given attribute's syntax is binary syntax,
+      # X-NOT-HUMAN-READABLE or X-BINARY-TRANSFER-REQUIRED
       def binary?
         @binary
+      end
+
+      # Sets binary encoding to value if the given attribute's syntax
+      # is binary syntax. Does nothing otherwise.
+      # @return [void]
+      def apply_encoding(value)
+        return unless binary?
+        case value
+        when Hash
+          value.each_value do |sub_value|
+            apply_encoding(sub_value)
+          end
+        when Array
+          value.each do |sub_value|
+            apply_encoding(sub_value)
+          end
+        else
+          return unless value.respond_to?(:force_encoding)
+          value.force_encoding("ASCII-8BIT")
+        end
       end
 
       # binary_required?
@@ -502,7 +528,7 @@ module ActiveLdap
         @syntax = @schema.ldap_syntax(@syntax) if @syntax
         if @syntax
           @binary_required = @syntax.binary_transfer_required?
-          @binary = (@binary_required or !@syntax.human_readable?)
+          @binary = @syntax.binary?
           @derived_syntax = @syntax
         else
           @binary_required = false
@@ -552,7 +578,7 @@ module ActiveLdap
         when Hash
           normalize_hash_value(value, have_binary_mark)
         else
-          if value.blank?
+          if value.nil?
             value = []
           else
             value = send_to_syntax(value, :normalize_value, value)

@@ -20,6 +20,10 @@ module ActiveLdap
         PRINTABLE_CHARACTER = /[#{printable_character_source}]/ #
         UNPRINTABLE_CHARACTER = /[^#{printable_character_source}]/ #
 
+        def binary?
+          false
+        end
+
         def type_cast(value)
           value
         end
@@ -180,10 +184,10 @@ module ActiveLdap
           return value if value.nil? or value.is_a?(Time)
           match_data = FORMAT.match(value)
           if match_data
-            required_components = match_data.to_a[1, 6]
+            required_components = match_data.to_a[1, 5]
             return value if required_components.any?(&:nil?)
-            year, month, day, hour, minute, second =
-              required_components.collect(&:to_i)
+            year, month, day, hour, minute = required_components.collect(&:to_i)
+            second = match_data[-3].to_i
             fraction = match_data[-2]
             fraction = fraction.to_f if fraction
             time_zone = match_data[-1]
@@ -226,7 +230,7 @@ module ActiveLdap
           if match_data
             date_data = match_data.to_a[1..-1]
             missing_components = []
-            required_components = %w(year month day hour minute second)
+            required_components = %w(year month day hour minute)
             required_components.each_with_index do |component, i|
               missing_components << component unless date_data[i]
             end
@@ -273,6 +277,10 @@ module ActiveLdap
 
       class JPEG < Base
         SYNTAXES["1.3.6.1.4.1.1466.115.121.1.28"] = self
+
+        def binary?
+          true
+        end
 
         private
         def validate_normalized_value(value, original_value)
@@ -366,6 +374,19 @@ module ActiveLdap
         end
       end
 
+      class OctetString < Base
+        SYNTAXES["1.3.6.1.4.1.1466.115.121.1.40"] = self
+
+        def binary?
+          true
+        end
+
+        private
+        def validate_normalized_value(value, original_value)
+          nil
+        end
+      end
+
       class PostalAddress < Base
         SYNTAXES["1.3.6.1.4.1.1466.115.121.1.41"] = self
 
@@ -411,6 +432,17 @@ module ActiveLdap
           return nil if value.blank?
           super
         end
+      end
+
+      class ObjectSecurityDescriptor < OctetString
+        # @see http://tools.ietf.org/html/draft-armijo-ldap-syntax-00
+        #   Object-Security-Descriptor: 1.2.840.113556.1.4.907
+        #
+        #   Encoded as an Octet-String (OID 1.3.6.1.4.1.1466.115.121.1.40)
+        #
+        # @see http://msdn.microsoft.com/en-us/library/cc223229.aspx
+        #   String(NT-Sec-Desc) 1.2.840.113556.1.4.907
+        SYNTAXES["1.2.840.113556.1.4.907"] = self
       end
     end
   end

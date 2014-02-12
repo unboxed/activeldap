@@ -91,39 +91,117 @@ class TestSyntax < Test::Unit::TestCase
     assert_dn_type_cast("cn=test", 'Distinguished Name')
   end
 
-  def test_generalized_time_type_cast
-    assert_type_cast_without_validation(nil, nil, "Generalized Time")
-    assert_type_cast(Time.parse("1994/12/16 10:32:12"), "19941216103212",
-                     "Generalized Time")
-    assert_type_cast(Time.parse("1994/12/16 10:32:12Z"), "19941216103212Z",
-                     "Generalized Time")
-    assert_type_cast(Time.parse("1994/12/16 10:32:12.345 +09:00"),
-                     "19941216103212.345+0900",
-                     "Generalized Time")
-    begin
-      Time.utc(1601)
-      assert_type_cast(Time.utc(1601, 1, 1, 0, 4, 17),
-                       "16010101000417.0Z",
-                       "Generalized Time")
-    rescue ArgumentError
-      assert_type_cast(Time.at(0),
-                       "16010101000417.0Z",
-                       "Generalized Time")
+  class TestGeneralizedTime < self
+    private
+    def syntax_name
+      "Generalized Time"
     end
 
-    begin
-      Time.at(-1)
-    rescue ArgumentError
-      if $!.message == "argument out of range"
-        assert_type_cast(Time.parse("1969/12/31 23:59:59 +00:00"),
-                         "19691231235959+0000",
-                         "Generalized Time")
+    class TestTypeCast < self
+      def test_nil
+        assert_type_cast_without_validation(nil, nil, syntax_name)
+      end
+
+      def test_timezone_none
+        assert_type_cast(Time.parse("1994/12/16 10:32:12"),
+                         "19941216103212")
+      end
+
+      def test_timezone_Z
+        assert_type_cast(Time.parse("1994/12/16 10:32:12Z"),
+                         "19941216103212Z")
+      end
+
+      def test_timezone_difference
+        assert_type_cast(Time.parse("1994/12/16 10:32:12.345 +09:00"),
+                         "19941216103212.345+0900")
+      end
+
+      def test_year_month_day_hour_minute
+        assert_type_cast(Time.parse("2008/01/07 03:46:00"),
+                         "200801070346")
+      end
+
+      def test_before_posix_time
+        time_can_handle_before_posix_time = false
+        begin
+          Time.utc(1601)
+          time_can_handle_before_posix_time = true
+        rescue ArgumentError
+        end
+
+        if time_can_handle_before_posix_time
+          assert_type_cast(Time.utc(1601, 1, 1, 0, 4, 17),
+                           "16010101000417.0Z")
+        else
+          assert_type_cast(Time.at(0),
+                           "16010101000417.0Z")
+        end
+      end
+
+      private
+      def assert_type_cast(type_casted_value, original_value)
+        super(type_casted_value, original_value, syntax_name)
+      end
+    end
+
+    class TestValidate < self
+      class TestValid < self
+        def test_no_timezone
+          assert_valid("19941216103201")
+        end
+
+        def test_timezone_Z
+          assert_valid("19941216103212Z")
+        end
+
+        def test_timezone_difference
+          assert_valid("19941216103230+0900")
+        end
+
+        def test_fraction_separator_period
+          assert_valid("20080107034615.0Z")
+        end
+
+        def test_fraction_separator_comma
+          assert_valid("20080107034615,123-0900")
+        end
+
+        def test_year_month_day_hour_minute
+          assert_valid("199412161032")
+        end
+
+        private
+        def assert_valid(value)
+          super(value, syntax_name)
+        end
+      end
+
+      class TestInvalid < self
+        def test_year_only
+          value = "1994"
+          params = [value.inspect, %w(month day hour minute).join(", ")]
+          assert_invalid(_("%s has missing components: %s") % params,
+                         value)
+        end
+
+        def test_year_month_day_hour_only
+          value = "1994121610"
+          params = [value.inspect, %w(minute).join(", ")]
+          assert_invalid(_("%s has missing components: %s") % params,
+                         value)
+        end
+
+        private
+        def assert_invalid(reason, value)
+          super(reason, value, syntax_name)
+        end
       end
     end
   end
 
   def test_integer_type_cast
-    assert_type_cast_without_validation(nil, nil, "Generalized Time")
+    assert_type_cast_without_validation(nil, nil, "Integer")
     assert_type_cast(1321, "1321", "Integer")
   end
 
@@ -197,23 +275,6 @@ class TestSyntax < Test::Unit::TestCase
     end
     assert_invalid(_("%s has invalid UTF-8 character") % value.inspect,
                    value, "Directory String")
-  end
-
-  def test_generalized_time_validate
-    assert_valid("19941216103201", "Generalized Time")
-    assert_valid("19941216103212Z", "Generalized Time")
-    assert_valid("19941216103230+0900", "Generalized Time")
-    assert_valid("20080107034615.0Z", "Generalized Time")
-    assert_valid("20080107034615,123-0900", "Generalized Time")
-
-    value = "1994"
-    params = [value.inspect, %w(month day hour minute second).join(", ")]
-    assert_invalid(_("%s has missing components: %s") % params,
-                   value, "Generalized Time")
-    value = "199412161032"
-    params = [value.inspect, %w(second).join(", ")]
-    assert_invalid(_("%s has missing components: %s") % params,
-                   value, "Generalized Time")
   end
 
   def test_integer_validate

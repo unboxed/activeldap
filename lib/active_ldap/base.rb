@@ -281,6 +281,7 @@ module ActiveLdap
   # by extension classes.
   class Base
     include GetTextSupport
+    public :gettext
     public :_
 
     if Object.const_defined?(:Reloadable)
@@ -290,9 +291,6 @@ module ActiveLdap
         include Reloadable::Subclasses
       end
     end
-
-    cattr_accessor :colorize_logging, :instance_writer => false
-    @@colorize_logging = true
 
     VALID_LDAP_MAPPING_OPTIONS = [:dn_attribute, :prefix, :scope,
                                   :classes, :recommended_classes,
@@ -678,21 +676,17 @@ module ActiveLdap
         self.classes = initial_classes
         self.dn = attributes
       when Hash
-        classes, attributes = extract_object_class(attributes)
+        attributes = attributes.clone
+        classes = extract_object_class!(attributes)
         self.classes = classes | initial_classes
-        normalized_attributes = {}
-        attributes.each do |key, value|
-          real_key = to_real_attribute_name(key) || key
-          normalized_attributes[real_key] = value
-        end
-        self.dn = normalized_attributes.delete(dn_attribute)
-        self.attributes = normalized_attributes
+        self.attributes = attributes
       else
         format = _("'%s' must be either nil, DN value as ActiveLdap::DN, " \
                    "String or Array or attributes as Hash")
         raise ArgumentError, format % attributes.inspect
       end
       yield self if block_given?
+      run_callbacks :initialize unless _initialize_callbacks.empty?
     end
 
     # Returns true if the +comparison_object+ is the same object, or is of
@@ -830,15 +824,11 @@ module ActiveLdap
       assign_attributes(new_attributes)
     end
 
-    def assign_attributes(new_attributes, options={})
+    def assign_attributes(new_attributes)
       return if new_attributes.blank?
 
       _schema = _local_entry_attribute = nil
-      if options[:without_protection]
-        targets = new_attributes
-      else
-        targets = sanitize_for_mass_assignment(new_attributes, options[:role])
-      end
+      targets = sanitize_for_mass_assignment(new_attributes)
       targets.each do |key, value|
         setter = "#{key}="
         unless respond_to?(setter)
@@ -900,12 +890,6 @@ module ActiveLdap
       set_attribute(name, value)
     end
 
-    def each
-      @data.each do |key, values|
-        yield(key.dup, values.dup)
-      end
-    end
-
     def bind(config_or_password={}, config_or_ignore=nil, &block)
       if config_or_password.is_a?(String)
         config = (config_or_ignore || {}).merge(:password => config_or_password)
@@ -940,6 +924,20 @@ module ActiveLdap
     def clear_object_class_based_cache
       @entry_attribute = nil
       @real_names = {}
+      @changed_attributes.reject! do |key, _|
+        not attribute_method?(key)
+      end
+    end
+
+    def clear_removed_attributes_data(removed_attributes)
+      return if removed_attributes.empty?
+      removed_entry_attribute = EntryAttribute.new(nil, [])
+      removed_attributes.each do |attribute|
+        removed_entry_attribute.register(attribute)
+      end
+      @data.reject! do |key, _|
+        removed_entry_attribute.exist?(key)
+      end
     end
 
     def schema
@@ -1034,18 +1032,31 @@ module ActiveLdap
       @local_entry_attribute ||= connection.entry_attribute([])
     end
 
-    def extract_object_class(attributes)
+    def extract_object_class!(attributes)
       classes = []
-      attrs = {}
-      attributes.each do |key, value|
-        key = key.to_s
-        if /\Aobject_?class\z/i =~ key
-          classes.concat(value.to_a)
-        else
-          attrs[key] = value
+      attributes.keys.each do |key|
+        string_key = key.to_s
+        if /\Aobject_?class\z/i =~ string_key
+          classes.concat(attributes[key].to_a)
+          attributes.delete(key)
         end
       end
-      [classes, attributes]
+      classes
+    end
+
+    def remove_dn_attribute!(attributes)
+      _dn_attribute = dn_attribute
+      attributes.keys.each do |key|
+        case key
+        when "id", :id, "dn", :dn
+          attributes.delete(key)
+        else
+          normalized_key = to_real_attribute_name(key) || key
+          if normalized_key == _dn_attribute
+            attributes.delete(key)
+          end
+        end
+      end
     end
 
     def init_base
@@ -1063,9 +1074,11 @@ module ActiveLdap
       @new_entry = false
       @dn_is_base = false
       @ldap_data = attributes
-      classes, attributes = extract_object_class(attributes)
+      attributes = attributes.clone
+      classes = extract_object_class!(attributes)
       self.classes = classes
       self.dn = dn
+      remove_dn_attribute!(attributes)
       initialize_attributes(attributes)
       yield self if block_given?
     end
@@ -1082,6 +1095,7 @@ module ActiveLdap
         end
         set_attribute(key, value)
       end
+      @changed_attributes.clear
     end
     private :initialize_attributes
 
@@ -1131,6 +1145,8 @@ module ActiveLdap
       @dn_split_value = nil
       @connection ||= nil
       @_hashing = false
+      @previously_changed = []
+      @changed_attributes = {}
       clear_connection_based_cache
     end
 
@@ -1180,8 +1196,9 @@ module ActiveLdap
 
     def split_dn_value(value)
       dn_value = relative_dn_value = nil
+      value = value.first if value.is_a?(Array) and value.size == 1
+      dn_value = value if value.is_a?(DN)
       begin
-        dn_value = value if value.is_a?(DN)
         dn_value ||= DN.parse(value)
       rescue DistinguishedNameInvalid
         begin

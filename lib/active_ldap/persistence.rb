@@ -16,12 +16,19 @@ module ActiveLdap
     #
     # Delete this entry from LDAP
     def destroy
-      self.class.delete(dn)
-      @new_entry = true
+      # TODO: support deleting relations
+      delete
     end
 
     def delete(options={})
-      super(dn, options)
+      if persisted?
+        default_options = {
+          :connection => connection,
+        }
+        self.class.delete_entry(dn, default_options.merge(options))
+      end
+      @new_entry = true
+      freeze
     end
 
     # save
@@ -37,6 +44,7 @@ module ActiveLdap
       unless create_or_update
         raise EntryNotSaved, _("entry %s can't be saved") % dn
       end
+      true
     end
 
     def create_or_update
@@ -62,7 +70,7 @@ module ActiveLdap
           if old_dn_base == new_dn_base
             new_superior = nil
           else
-            new_superior = new_dn_base
+            new_superior = new_dn_base.to_s
           end
           modify_rdn_entry(@original_dn,
                            "#{dn_attribute}=#{DN.escape_value(new_dn_value)}",
@@ -83,7 +91,7 @@ module ActiveLdap
       end
 
       @ldap_data.update(attributes)
-      classes, attributes = extract_object_class(attributes)
+      classes = extract_object_class!(attributes)
       self.classes = classes
       self.attributes = attributes
       @new_entry = false

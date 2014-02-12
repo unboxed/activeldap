@@ -3,13 +3,13 @@ h1. ActiveLdap
 A ruby library for object-oriented LDAP interface.
 
 * Copyright (C) 2004-2006 Will Drewry _<will@alum.bu.edu>_
-* Copyright (C) 2006-2011 Kouhei Sutou _<kou@clear-code.com>_
+* Copyright (C) 2006-2013 Kouhei Sutou _<kou@clear-code.com>_
 
 h2. Description
 
 'ActiveLdap' is a ruby library which provides a clean
 objected oriented interface to LDAP library.  It was
-inspired by ActivRecord. This is not nearly as clean or as
+inspired by ActiveRecord. This is not nearly as clean or as
 flexible as ActiveRecord, but it is still trivial to define
 new objects and manipulate them with minimal difficulty.
 
@@ -20,7 +20,7 @@ h2. Prerequisites
 
 - Ruby intepreter :=
 One of them:
-* "Ruby":http://www.ruby-lang.org (1.8.x or 1.9.x)
+* "Ruby":http://www.ruby-lang.org (1.9.3 or 2.0.x)
 * "JRuby":http://www.jruby.org/
 
 See the above links for installation.
@@ -45,7 +45,8 @@ h2. Notes
 
 h2. Rails
 
-See "Rails":file.rails.html page for Rails integration.
+See "Rails":file.rails.html ("doc/text/rails.textile":doc/text/rails.textile
+in the repository and on GitHub) page for Rails integration.
 
 h2. Licence
 
@@ -137,3 +138,4 @@ list, please point out.
 * Hidetoshi Yoshimoto: Rails 3 support.
 * warden: A bug report.
 * bklier: A bug fix.
+* Craig White: Bug reports.

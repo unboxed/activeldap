@@ -4,9 +4,21 @@ class TestCallback < Test::Unit::TestCase
   include AlTestUtils
 
   priority :must
+  def test_new
+    initialized_entries = []
+    @group_class.instance_variable_set("@initialized_entries",
+                                       initialized_entries)
+    @group_class.module_eval do
+      after_initialize "self.class.instance_variable_get('@initialized_entries') << self"
+    end
+    assert_equal([], initialized_entries)
+    new_group = @group_class.new(:cn => "new-cn")
+    assert_equal([new_group.cn].sort,
+                 initialized_entries.collect {|g| g.cn}.sort)
+  end
 
   priority :normal
-  def test_callback_after_find_and_after_initialize
+  def test_find
     make_temporary_group do |group|
       found_entries = []
       initialized_entries = []

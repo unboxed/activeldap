@@ -23,6 +23,7 @@ Gem::Specification.new do |spec|
   spec.files = collect_files.call("lib/**/*",
                                   "{benchmark,examples,po}/**/*",
                                   "bin/*",
+                                  ".yardopts",
                                   "doc/text/**/*",
                                   "COPYING",
                                   "Gemfile",
@@ -30,6 +31,9 @@ Gem::Specification.new do |spec|
                                   "README.textile",
                                   "TODO")
   spec.files.delete_if {|file| /\.yaml\z/ =~ File.basename(file)}
+  spec.test_files = collect_files.call("test/**/*.rb",
+                                       "test/config.yaml.sample",
+                                       "test/**/*.ldif")
   spec.description = <<-EOF
     'ActiveLdap' is a ruby library which provides a clean
     objected oriented interface to the Ruby/LDAP library.  It was inspired
@@ -37,18 +41,18 @@ Gem::Specification.new do |spec|
     ActiveRecord, but it is still trivial to define new objects and manipulate
     them with minimal difficulty.
   EOF
-  spec.license = "Ruby's or GPLv2 or later"
+  spec.licenses = ["Ruby's", "GPLv2 or later"]
 
-  spec.add_dependency("activemodel", ["~> 3.1.0"])
+  spec.add_dependency("activemodel", ["~> 4.0.0"])
   spec.add_dependency("locale")
-  spec.add_dependency("fast_gettext")
+  spec.add_dependency("gettext")
   spec.add_dependency("gettext_i18n_rails")
 
-  spec.add_development_dependency("ruby-ldap")
-  spec.add_development_dependency("net-ldap")
-  spec.add_development_dependency("jeweler")
+  spec.add_development_dependency("bundler")
+  spec.add_development_dependency("rake")
   spec.add_development_dependency("test-unit")
   spec.add_development_dependency("test-unit-notify")
   spec.add_development_dependency("yard")
   spec.add_development_dependency("RedCloth")
+  spec.add_development_dependency("packnga")
 end

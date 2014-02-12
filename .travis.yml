@@ -1,0 +1,16 @@
+rvm:
+  - 1.9.3
+  - 2.0.0
+  - 2.1.0
+  - ruby-head
+#  - rbx
+#  - jruby
+env:
+  - JRUBY_OPTS="-Xcext.enabled=true"
+notifications:
+  recipients:
+    - ruby-activeldap-commit@rubyforge.org
+before_install:
+  - travis/before_install.sh
+before_script:
+  - travis/before_script.sh

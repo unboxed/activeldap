@@ -55,8 +55,10 @@ module ActiveLdap
           uri = construct_uri(host, port, method.ssl?)
           with_start_tls = method.start_tls?
           info = {:uri => uri, :with_start_tls => with_start_tls}
-          [log("connect", info) {method.connect(host, port)},
-           uri, with_start_tls]
+          connection = log("connect", info) do
+            method.connect(host, port)
+          end
+          [connection, uri, with_start_tls]
         end
       end
 
@@ -82,12 +84,23 @@ module ActiveLdap
       def search(options={})
         super(options) do |base, scope, filter, attrs, limit|
           begin
+            use_paged_results = options[:use_paged_results]
+            if use_paged_results or use_paged_results.nil?
+              use_paged_results = supported_control.paged_results?
+            end
             info = {
               :base => base, :scope => scope_name(scope),
               :filter => filter, :attributes => attrs, :limit => limit,
             }
-            execute(:search_with_limit,
-                    info, base, scope, filter, attrs, limit) do |entry|
+            options = {
+              :base              => base,
+              :scope             => scope,
+              :filter            => filter,
+              :attributes        => attrs,
+              :limit             => limit,
+              :use_paged_results => use_paged_results
+            }
+            execute(:search_full, info, options) do |entry|
               attributes = {}
               entry.attrs.each do |attr|
                 value = entry.vals(attr)
@@ -152,7 +165,8 @@ module ActiveLdap
 
       def modify_rdn(dn, new_rdn, delete_old_rdn, new_superior, options={})
         super do |_dn, _new_rdn, _delete_old_rdn, _new_superior|
-          if _new_superior
+          rename_available_p = @connection.respond_to?(:rename)
+          if _new_superior and not rename_available_p
             raise NotImplemented.new(_("modify RDN with new superior"))
           end
           info = {
@@ -162,7 +176,12 @@ module ActiveLdap
             :new_superior => _new_superior,
             :delete_old_rdn => _delete_old_rdn
           }
-          execute(:modrdn, info, _dn, _new_rdn, _delete_old_rdn)
+          if rename_available_p
+            execute(:rename, info,
+                    _dn, _new_rdn, _new_superior, _delete_old_rdn, [], [])
+          else
+            execute(:modrdn, info, _dn, _new_rdn, _delete_old_rdn)
+          end
         end
       end
 
@@ -181,10 +200,6 @@ module ActiveLdap
           @connection.assert_error_code
           raise $!.message
         end
-      end
-
-      def do_in_timeout(timeout, &block)
-        Timeout.timeout(timeout, &block)
       end
 
       def ensure_method(method)

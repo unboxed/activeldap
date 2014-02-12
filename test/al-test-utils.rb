@@ -1,4 +1,4 @@
-require 'test/unit'
+require 'test-unit'
 
 require 'erb'
 require 'yaml'
@@ -17,7 +17,6 @@ module AlTestUtils
     base.class_eval do
       include ActiveLdap::GetTextSupport
       include Utilities
-      include Assertions
       include Config
       include Connection
       include Populate
@@ -30,16 +29,6 @@ module AlTestUtils
   module Utilities
     def dn(string)
       ActiveLdap::DN.parse(string)
-    end
-  end
-
-  module Assertions
-    def assert_true(actual, *args)
-      assert_equal(true, actual, *args)
-    end
-
-    def assert_false(actual, *args)
-      assert_equal(false, actual, *args)
     end
   end
 
@@ -239,9 +228,7 @@ module AlTestUtils
                                :prefix => "ou=Users",
                                :scope => :sub,
                                :classes => @user_class_classes
-      def @user_class.name
-        "User"
-      end
+      assign_class_name(@user_class, "User")
     end
 
     def populate_group_class
@@ -249,9 +236,7 @@ module AlTestUtils
       @group_class.ldap_mapping :prefix => "ou=Groups",
                                 :scope => :sub,
                                 :classes => ["posixGroup"]
-      def @group_class.name
-        "Group"
-      end
+      assign_class_name(@group_class, "Group")
     end
 
     def populate_associations
@@ -267,6 +252,17 @@ module AlTestUtils
       @user_class.set_associated_class(:primary_group, @group_class)
       @group_class.set_associated_class(:members, @user_class)
       @group_class.set_associated_class(:primary_members, @user_class)
+    end
+
+    def assign_class_name(klass, name)
+      singleton_class = class << klass; self; end
+      singleton_class.send(:define_method, :name) do
+        name
+      end
+      if Object.const_defined?(klass.name)
+        Object.send(:remove_const, klass.name)
+      end
+      Object.const_set(klass.name, klass)
     end
   end
 

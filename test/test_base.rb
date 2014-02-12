@@ -75,14 +75,6 @@ class TestBase < Test::Unit::TestCase
     end
   end
 
-  def test_not_rename_by_mass_update
-    make_temporary_user(:simple => true) do |user,|
-      original_id = user.id
-      assert_true(user.update_attributes(:id => "user2"))
-      assert_equal(original_id, user.id)
-    end
-  end
-
   def test_attributes
     make_temporary_group do |group|
       assert_equal({
@@ -98,22 +90,15 @@ class TestBase < Test::Unit::TestCase
     make_ou("sub,ou=users")
     make_temporary_user(:simple => true) do |user,|
       user.id = "user2,ou=sub,#{@user_class.base}"
-      case user.connection.class.to_s.demodulize
-      when "Jndi"
-        assert_true(user.save)
+      assert_true(user.save)
 
-        found_user = nil
-        assert_nothing_raised do
-          found_user = @user_class.find("user2")
-        end
-        base = @user_class.base
-        assert_equal("#{@user_class.dn_attribute}=user2,ou=sub,#{base}",
-                     found_user.dn.to_s)
-      else
-        assert_raise(ActiveLdap::NotImplemented) do
-          user.save
-        end
+      found_user = nil
+      assert_nothing_raised do
+        found_user = @user_class.find("user2")
       end
+      base = @user_class.base
+      assert_equal("#{@user_class.dn_attribute}=user2,ou=sub,#{base}",
+                   found_user.dn.to_s)
     end
   end
 
@@ -788,40 +773,6 @@ class TestBase < Test::Unit::TestCase
       assert_equal(user1.cn, user2.cn)
       assert_equal(user1.attributes.reject {|k, v| k == "cn"},
                    user2.attributes.reject {|k, v| k == "cn"})
-    end
-  end
-
-  def test_delete
-    make_temporary_user do |user1,|
-      make_temporary_user do |user2,|
-        make_temporary_user do |user3,|
-          assert(@user_class.exists?(user1.uid))
-          @user_class.delete(user1.dn)
-          assert(!@user_class.exists?(user1.uid))
-
-          assert(@user_class.exists?(user2.dn))
-          @user_class.delete(user2.uid)
-          assert(!@user_class.exists?(user2.dn))
-
-          assert(@user_class.exists?(user3.dn))
-          @user_class.delete("uid=#{user3.uid}")
-          assert(!@user_class.exists?(user3.dn))
-        end
-      end
-    end
-
-    make_temporary_user do |user1,|
-      make_temporary_user do |user2,|
-        make_temporary_user do |user3,|
-          assert(@user_class.exists?(user1.uid))
-          assert(@user_class.exists?(user2.uid))
-          assert(@user_class.exists?(user3.uid))
-          @user_class.delete([user1.dn, user2.uid, "uid=#{user3.uid}"])
-          assert(!@user_class.exists?(user1.uid))
-          assert(!@user_class.exists?(user2.uid))
-          assert(!@user_class.exists?(user3.uid))
-        end
-      end
     end
   end
 

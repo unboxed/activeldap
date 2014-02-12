@@ -1,8 +1,7 @@
-require 'benchmark'
-
 require 'active_ldap/schema'
 require 'active_ldap/entry_attribute'
 require 'active_ldap/ldap_error'
+require 'active_ldap/supported_control'
 
 module ActiveLdap
   module Adapter
@@ -19,9 +18,7 @@ module ActiveLdap
 
       @@row_even = true
 
-      attr_reader :runtime
       def initialize(configuration={})
-        @runtime = 0
         @connection = nil
         @disconnected = false
         @bound = false
@@ -34,11 +31,6 @@ module ActiveLdap
           instance_variable_set("@#{name}", configuration[name])
         end
         @instrumenter = ActiveSupport::Notifications.instrumenter
-      end
-
-      def reset_runtime
-        runtime, @runtime = @runtime, 0
-        runtime
       end
 
       def connect(options={})
@@ -148,6 +140,11 @@ module ActiveLdap
         root_dse_values('namingContexts')
       end
 
+      def supported_control
+        @supported_control ||=
+          SupportedControl.new(root_dse_values("supportedControl"))
+      end
+
       def entry_attribute(object_classes)
         @entry_attributes[object_classes.uniq.sort] ||=
           EntryAttribute.new(schema, object_classes)
@@ -240,13 +237,6 @@ module ActiveLdap
         end
       end
 
-      def log_info(name, runtime_in_seconds, info=nil)
-        return unless @logger
-        return unless @logger.debug?
-        message = "LDAP: #{name} (#{'%.1f' % (runtime_in_seconds * 1000)}ms)"
-        @logger.debug(format_log_entry(message, info))
-      end
-
       private
       def ensure_port(method)
         if method == :ssl
@@ -317,7 +307,8 @@ module ActiveLdap
           do_in_timeout(@timeout, &block)
         rescue Timeout::Error => e
           @logger.error {_('Requested action timed out.')}
-          if @retry_on_timeout and retry_limit < 0 and n_retries <= retry_limit
+          if @retry_on_timeout and (retry_limit < 0 or n_retries <= retry_limit)
+            n_retries += 1
             if connecting?
               retry
             elsif try_reconnect
@@ -336,7 +327,7 @@ module ActiveLdap
       def sasl_bind(bind_dn, options={})
         # Get all SASL mechanisms
         mechanisms = operation(options) do
-          root_dse_values("supportedSASLMechanisms")
+          root_dse_values("supportedSASLMechanisms", options)
         end
 
         if options.has_key?(:sasl_quiet)
@@ -579,9 +570,10 @@ module ActiveLdap
           options[:reconnect_attempts] = 0 if force
           options[:reconnect_attempts] += 1 if retry_limit >= 0
           begin
+            options[:try_reconnect] = false
             connect(options)
             break
-          rescue AuthenticationError
+          rescue AuthenticationError, Timeout::Error
             raise
           rescue => detail
             @logger.error do
@@ -633,10 +625,18 @@ module ActiveLdap
 
       def root_dse(attrs, options={})
         found_attributes = nil
+        if options.has_key?(:try_reconnect)
+           try_reconnect = options[:try_reconnect]
+        else
+           try_reconnect = true
+        end
+
         search(:base => "",
                :scope => :base,
                :attributes => attrs,
-               :limit => 1) do |dn, attributes|
+               :limit => 1,
+               :try_reconnect => try_reconnect,
+               :use_paged_results => false) do |dn, attributes|
           found_attributes = attributes
         end
         found_attributes
@@ -657,42 +657,13 @@ module ActiveLdap
       end
 
       def log(name, info=nil)
-        if block_given?
-          result = nil
-          @instrumenter.instrument(
-            "log_info.active_ldap",
-            :info => info,
-            :name => name) { result = yield }
-          result
-        else
-          log_info(name, 0, info)
-          nil
+        result = nil
+        payload = {:name => name}
+        payload[:info] = info if info
+        @instrumenter.instrument("log_info.active_ldap", payload) do
+          result = yield if block_given?
         end
-      rescue Exception
-        log_info("#{name}: FAILED", 0,
-                 (info || {}).merge(:error => $!.class.name,
-                                    :error_message => $!.message))
-        raise
-      end
-
-      def format_log_entry(message, info=nil)
-        if ActiveLdap::Base.colorize_logging
-          if @@row_even
-            message_color, dump_color = "4;36;1", "0;1"
-          else
-            @@row_even = true
-            message_color, dump_color = "4;35;1", "0"
-          end
-          @@row_even = !@@row_even
-
-          log_entry = "  \e[#{message_color}m#{message}\e[0m"
-          log_entry << ": \e[#{dump_color}m#{info.inspect}\e[0m" if info
-          log_entry
-        else
-          log_entry = message
-          log_entry += ": #{info.inspect}" if info
-          log_entry
-        end
+        result
       end
 
       def ensure_dn_string(dn)

@@ -14,11 +14,6 @@ else
   require 'active_ldap/timeout_stub'
 end
 
-begin
-  require "locale"
-  require "fast_gettext"
-rescue LoadError
-end
 require 'active_ldap/get_text'
 
 require 'active_ldap/compatible'
@@ -57,27 +52,27 @@ require 'active_ldap/callbacks'
 
 
 ActiveLdap::Base.class_eval do
+  include ActiveLdap::Persistence
+
   include ActiveLdap::Associations
-  include ActiveModel::MassAssignmentSecurity
+  include ActiveModel::ForbiddenAttributesProtection
   include ActiveLdap::Attributes
   include ActiveLdap::AttributeMethods
-  include ActiveLdap::AttributeMethods::Query
   include ActiveLdap::AttributeMethods::BeforeTypeCast
-  include ActiveLdap::AttributeMethods::Read
   include ActiveLdap::AttributeMethods::Write
+  include ActiveLdap::AttributeMethods::Dirty
+  include ActiveLdap::AttributeMethods::Query
+  include ActiveLdap::AttributeMethods::Read
   include ActiveLdap::Configuration
   include ActiveLdap::Connection
   include ActiveLdap::Operations
   include ActiveLdap::ObjectClass
-
-  include ActiveLdap::Persistence
 
   include ActiveLdap::Acts::Tree
 
   include ActiveLdap::Validations
   include ActiveLdap::Callbacks
   include ActiveLdap::HumanReadable
-  include ActiveLdap::AttributeMethods::Dirty
 end
 
 unless defined?(ACTIVE_LDAP_CONNECTION_ADAPTERS)
@@ -88,3 +83,5 @@ ACTIVE_LDAP_CONNECTION_ADAPTERS.each do |adapter|
   require "active_ldap/adapter/#{adapter}"
 end
 
+require "active_ldap/entry"
+require "active_ldap/railtie" if defined?(Rails)

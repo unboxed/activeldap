@@ -41,11 +41,11 @@ module ActiveLdap
     end
 
     def save(*)
-      valid? ? super: false
+      valid? ? super : false
     end
 
     def save!(*)
-      valid? ? super: raise(EntryInvalid.new(self))
+      valid? ? super : raise(EntryInvalid.new(self))
     end
 
     private
@@ -147,7 +147,7 @@ module ActiveLdap
           next if required_attribute.read_only?
           next if _validation_skip_attributes.include?(real_name)
 
-          value = @data[real_name] || []
+          value = @data[real_name]
           next unless self.class.blank_value?(value)
 
           _schema ||= schema
@@ -171,6 +171,8 @@ module ActiveLdap
     def validate_ldap_values
       entry_attribute.schemata.each do |name, attribute|
         value = self[name]
+        # Is it really proper location for setting encoding?
+        attribute.apply_encoding(value)
         next if self.class.blank_value?(value)
         validate_ldap_value(attribute, name, value)
       end

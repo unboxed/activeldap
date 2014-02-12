@@ -26,6 +26,8 @@ module ActiveLdap
       StartTlsRequest = ldap.StartTlsRequest
       Control = ldap.Control
 
+      CommunicationException = naming.CommunicationException
+      ServiceUnavailableException = naming.ServiceUnavailableException
       NamingException = naming.NamingException
       NameNotFoundException = naming.NameNotFoundException
 
@@ -71,10 +73,11 @@ module ActiveLdap
         end
       end
 
-      def initialize(host, port, method)
+      def initialize(host, port, method, timeout)
         @host = host
         @port = port
         @method = method
+        @timeout = timeout
         @context = nil
         @tls = nil
       end
@@ -157,6 +160,8 @@ module ActiveLdap
         environment = {
           Context::INITIAL_CONTEXT_FACTORY => "com.sun.jndi.ldap.LdapCtxFactory",
           Context::PROVIDER_URL => ldap_uri,
+          'com.sun.jndi.ldap.connect.timeout' => (@timeout * 1000).to_i.to_s,
+          'com.sun.jndi.ldap.read.timeout' => (@timeout * 1000).to_i.to_s,
         }
         environment = HashTable.new(environment)
         context = InitialLdapContext.new(environment, nil)

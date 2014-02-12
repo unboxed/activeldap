@@ -63,6 +63,12 @@ module ActiveLdap
       end
 
       def search(options={})
+        use_paged_results = options[:use_paged_results]
+        if use_paged_results or use_paged_results.nil?
+          paged_results_supported = supported_control.paged_results?
+        else
+          paged_results_supported = false
+        end
         super(options) do |base, scope, filter, attrs, limit|
           args = {
             :base => base,
@@ -70,10 +76,12 @@ module ActiveLdap
             :filter => filter,
             :attributes => attrs,
             :size => limit,
+            :paged_searches_supported => paged_results_supported,
           }
           info = {
             :base => base, :scope => scope_name(scope),
-            :filter => filter, :attributes => attrs, :limit => limit
+            :filter => filter, :attributes => attrs, :limit => limit,
+            :paged_results_supported => paged_results_supported,
           }
           execute(:search, info, args) do |entry|
             attributes = {}
@@ -119,9 +127,6 @@ module ActiveLdap
 
       def modify_rdn(dn, new_rdn, delete_old_rdn, new_superior, options={})
         super do |_dn, _new_rdn, _delete_old_rdn, _new_superior|
-          if _new_superior
-            raise NotImplemented.new(_("modify RDN with new superior"))
-          end
           info = {
             :name => "modify: RDN",
             :dn => _dn,
@@ -132,7 +137,8 @@ module ActiveLdap
           execute(:rename, info,
                   :olddn => _dn,
                   :newrdn => _new_rdn,
-                  :delete_attributes => _delete_old_rdn)
+                  :delete_attributes => _delete_old_rdn,
+                  :new_superior => _new_superior)
         end
       end
 
@@ -142,14 +148,18 @@ module ActiveLdap
         result = log(name, info) do
           begin
             @connection.send(method, *args, &block)
-          rescue Errno::EPIPE
+          rescue Errno::EPIPE, Errno::ECONNRESET
             raise ConnectionError, "#{$!.class}: #{$!.message}"
           end
         end
         message = nil
-        if result.is_a?(Hash)
+        case result
+        when Hash
           message = result[:errorMessage]
           result = result[:resultCode]
+        when Net::LDAP::PDU
+          message = result.error_message
+          result = result.result_code
         end
         unless result.zero?
           klass = LdapError::ERRORS[result]
