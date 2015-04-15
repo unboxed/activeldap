@@ -1,3 +1,5 @@
+require "English"
+require "cgi"
 require 'uri'
 begin
   require 'uri/ldaps'
@@ -43,6 +45,7 @@ module ActiveLdap
     DEFAULT_CONFIG[:timeout] = 0 # in seconds; 0 <= Never timeout
     # Whether or not to retry on timeouts
     DEFAULT_CONFIG[:retry_on_timeout] = true
+    DEFAULT_CONFIG[:follow_referrals] = true
 
     DEFAULT_CONFIG[:logger] = nil
 
@@ -96,7 +99,7 @@ module ActiveLdap
       def remove_connection_related_configuration(config)
         config.reject do |key, value|
           CONNECTION_CONFIGURATION_KEYS.include?(key)
-	end
+        end
       end
 
       def merge_configuration(user_configuration, target=self)
@@ -135,12 +138,49 @@ module ActiveLdap
           raise ConfigurationError.new(_("not a LDAP URI: %s") % uri.to_s)
         end
 
-        uri_configuration = {:port => uri.port}
-        uri_configuration[:host] = uri.host if uri.host
-        uri_configuration[:bind_dn] = uri.dn if uri.dn
-        uri_configuration[:scope] = uri.scope if uri.scope
-        uri_configuration[:method] = :ssl if uri.is_a?(URI::LDAPS)
-        uri_configuration.merge(configuration)
+        merger = URIConfigurationMerger.new(uri)
+        merger.merge(configuration)
+      end
+
+      class URIConfigurationMerger
+        def initialize(uri)
+          @uri = uri
+        end
+
+        def merge(configuration)
+          uri_configuration = {:port => @uri.port}
+          uri_configuration[:host] = @uri.host if @uri.host
+          uri_configuration[:base] = @uri.dn if @uri.dn
+          extensions = parse_extensions
+          bindname_extension = extensions["bindname"]
+          if bindname_extension
+            uri_configuration[:bind_dn] = bindname_extension[:value]
+            uri_configuration[:allow_anonymous] = !bindname_extension[:critical]
+          end
+          uri_configuration[:scope] = @uri.scope if @uri.scope
+          uri_configuration[:method] = :ssl if @uri.is_a?(URI::LDAPS)
+          uri_configuration.merge(configuration)
+        end
+
+        private
+        def parse_extensions
+          extensions = {}
+          (@uri.extensions || "").split(",").collect do |extension|
+            name, value = extension.split("=", 2)
+            case name
+            when /\A!/
+              critical = true
+              name = $POSTMATCH
+            else
+              critical = false
+            end
+            extensions[name] = {
+              :critical => critical,
+              :value => CGI.unescape(value || ""),
+            }
+          end
+          extensions
+        end
       end
     end
   end

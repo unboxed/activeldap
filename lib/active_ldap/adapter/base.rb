@@ -8,13 +8,26 @@ module ActiveLdap
     class Base
       include GetTextSupport
 
-      VALID_ADAPTER_CONFIGURATION_KEYS = [:host, :port, :method, :timeout,
-                                          :retry_on_timeout, :retry_limit,
-                                          :retry_wait, :bind_dn, :password,
-                                          :password_block, :try_sasl,
-                                          :sasl_mechanisms, :sasl_quiet,
-                                          :allow_anonymous, :store_password,
-                                          :scope, :sasl_options]
+      VALID_ADAPTER_CONFIGURATION_KEYS = [
+        :host,
+        :port,
+        :method,
+        :timeout,
+        :retry_on_timeout,
+        :retry_limit,
+        :retry_wait,
+        :bind_dn,
+        :password,
+        :password_block,
+        :try_sasl,
+        :sasl_mechanisms,
+        :sasl_quiet,
+        :allow_anonymous,
+        :store_password,
+        :scope,
+        :sasl_options,
+        :follow_referrals,
+      ]
 
       @@row_even = true
 
@@ -24,12 +37,14 @@ module ActiveLdap
         @bound = false
         @bind_tried = false
         @entry_attributes = {}
+        @follow_referrals = nil
         @configuration = configuration.dup
         @logger = @configuration.delete(:logger)
         @configuration.assert_valid_keys(VALID_ADAPTER_CONFIGURATION_KEYS)
         VALID_ADAPTER_CONFIGURATION_KEYS.each do |name|
           instance_variable_set("@#{name}", configuration[name])
         end
+        @follow_referrals = true if @follow_referrals.nil?
         @instrumenter = ActiveSupport::Notifications.instrumenter
       end
 
@@ -243,6 +258,15 @@ module ActiveLdap
           URI::LDAPS::DEFAULT_PORT
         else
           URI::LDAP::DEFAULT_PORT
+        end
+      end
+
+      def follow_referrals?(options={})
+        option_follow_referrals = options[:follow_referrals]
+        if option_follow_referrals.nil?
+          @follow_referrals
+        else
+          option_follow_referrals
         end
       end
 
@@ -658,8 +682,10 @@ module ActiveLdap
 
       def log(name, info=nil)
         result = nil
-        payload = {:name => name}
-        payload[:info] = info if info
+        payload = {
+          :name => name,
+          :info => info || {},
+        }
         @instrumenter.instrument("log_info.active_ldap", payload) do
           result = yield if block_given?
         end
